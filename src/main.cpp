@@ -1,12 +1,14 @@
 #include <iostream>
+#include <vector>
 #include <string>
 #include <cstdlib>    // getenv
 #include <sstream>    // stringstream
 #include <unistd.h>   // access
 #include <sys/stat.h> // stat
-using namespace std;
+#include <unistd.h>   // fork, execvp
+#include <sys/wait.h> // wait
 
-bool isExecutable(const string &path)
+bool isExecutable(const std::string &path)
 {
   struct stat sb;
   return stat(path.c_str(), &sb) == 0 &&
@@ -14,73 +16,130 @@ bool isExecutable(const string &path)
          access(path.c_str(), X_OK) == 0;
 }
 
+std::vector<std::string> tokenize(const std::string &input)
+{
+  std::vector<std::string> tokens;
+  std::stringstream ss(input);
+  std::string token;
+  while (ss >> token)
+  {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
 int main()
 {
-  // Flush after every std::cout / std:cerr
+  // Flush after every std::std::cout / std:cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
   while (1)
   {
     std::cout << "$ ";
-    string command;
-    getline(cin, command);
+    std::string input;
+    if (!getline(std::cin, input)) // ctrl + d to exit shell
+    {
+      std::cout << "\n";
+      break;
+    }
+    if (input.empty()) // pressing "enter" wh blank line
+      continue;
+    std::vector<std::string> tokens = tokenize(input);
+    std::string command = tokens[0];
 
     // exit
     if (command == "exit")
       exit(0);
 
     // echo
-    if (command.rfind("echo", 0) == 0)
+    else if (command == "echo")
     {
-      string remaining = command.substr(4);
-      if (!remaining.empty() && remaining[0] == ' ')
-        remaining.erase(0, remaining.find_first_not_of(' '));
-      cout << remaining << endl;
+      for (size_t i = 1; i < tokens.size(); i++)
+      {
+        std::cout << tokens[i] << (i == tokens.size() - 1 ? "" : " ");
+      }
+      std::cout << std::endl;
       continue;
     }
 
     // type
-    if (command.rfind("type", 0) == 0)
+    else if (command == "type")
     {
-      string remaining = command.substr(4);
-      if (!remaining.empty() && remaining[0] == ' ')
-        remaining.erase(0, remaining.find_first_not_of(' '));
-
-      if (remaining == "echo" || remaining == "exit" || remaining == "type")
+      if (tokens.size() < 2)
+        continue; // Handle case where user just types 'type' without argv
+      std::string target = tokens[1];
+      if (target == "echo" || target == "exit" || target == "type")
       {
-        cout << remaining << " is a shell builtin\n";
+        std::cout << target << " is a shell builtin\n";
         continue;
       }
-      const char *pathEnv = getenv("PATH");
-      if (!pathEnv)
+      else
       {
-        cout << remaining << ": not found\n";
-        continue;
-      }
-      stringstream ss(pathEnv);
-      string dir;
-      bool flag = false;
-      while (getline(ss, dir, ':'))
-      {
-        string fullPath = dir + "/" + remaining;
-
-        // does file exists?
-        if (access(fullPath.c_str(), F_OK) == 0)
+        const char *pathEnv = getenv("PATH");
+        if (!pathEnv)
         {
+          std::cout << target << ": not found\n";
+          continue;
+        }
+        std::stringstream ss(pathEnv);
+        std::string dir;
+        bool flag = false;
+        while (getline(ss, dir, ':'))
+        {
+          std::string fullPath = dir + "/" + target;
           // is it executable?
           if (isExecutable(fullPath))
           {
-            cout << remaining << " is " << fullPath << "\n";
+            std::cout << target << " is " << fullPath << "\n";
             flag = true;
             break;
           }
         }
+        if (!flag)
+        {
+          std::cout << target << ": not found\n";
+        }
+        continue;
       }
-      if(!flag)
-        cout << remaining << ": not found\n";
-    continue;
     }
-    cout << command << ": command not found" << endl;
+    // execute
+    const char *pathEnv = getenv("PATH");
+    std::stringstream ss(pathEnv ? pathEnv : "");
+    std::string dir;
+    std::string executablePath = "";
+    while (getline(ss, dir, ':'))
+    {
+      std::string fullPath = dir + "/" + command;
+      if (isExecutable(fullPath))
+      {
+        executablePath = fullPath;
+        break;
+      }
+    }
+    if (!executablePath.empty())
+    {
+      std::vector<char *> argv;
+      for (auto &s : tokens)
+      {
+        argv.push_back(&s[0]);
+      }
+      argv.push_back(nullptr);
+
+      pid_t pid = fork();
+      if (pid == 0)
+      {
+        // child process
+        if (execv(executablePath.c_str(), argv.data()) == -1)
+          exit(1);
+      }
+      else if (pid > 0)
+      { // parent process
+        int status;
+        waitpid(pid, &status, 0);
+      }
+      continue;
+    }
+    std::cout << input << ": command not found" << std::endl;
   }
 }
