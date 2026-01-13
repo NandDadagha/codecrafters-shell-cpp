@@ -62,14 +62,20 @@ int main()
       std::cout << std::endl;
       continue;
     }
-
+    else if(command == "pwd") {
+      char buffer[1024];
+      if(getcwd(buffer, sizeof(buffer)) != nullptr) {
+        std::cout << buffer << "\n";
+      }
+      continue;
+    }
     // type
     else if (command == "type")
     {
       if (tokens.size() < 2)
         continue; // Handle case where user just types 'type' without argv
       std::string target = tokens[1];
-      if (target == "echo" || target == "exit" || target == "type")
+      if (target == "echo" || target == "exit" || target == "type" || target == "pwd")
       {
         std::cout << target << " is a shell builtin\n";
         continue;
@@ -119,9 +125,10 @@ int main()
     }
     if (!executablePath.empty())
     {
-      std::vector<char *> argv;
+      std::vector<char *> argv; // char* instead of string because kernal can't understand c++
       for (auto &s : tokens)
       {
+
         argv.push_back(&s[0]);
       }
       argv.push_back(nullptr);
