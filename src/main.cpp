@@ -62,10 +62,18 @@ int main()
       std::cout << std::endl;
       continue;
     }
+    // pwd
     else if(command == "pwd") {
       char buffer[1024];
       if(getcwd(buffer, sizeof(buffer)) != nullptr) {
         std::cout << buffer << "\n";
+      }
+      continue;
+    }
+    // cd
+    else if(command == "cd") {
+      if(chdir(tokens[1].c_str()) != 0) {
+        std::cout << "cd: " << tokens[1] << ": No such file or directory\n";
       }
       continue;
     }
@@ -75,7 +83,7 @@ int main()
       if (tokens.size() < 2)
         continue; // Handle case where user just types 'type' without argv
       std::string target = tokens[1];
-      if (target == "echo" || target == "exit" || target == "type" || target == "pwd")
+      if (target == "echo" || target == "exit" || target == "type" || target == "pwd" || target == "cd")
       {
         std::cout << target << " is a shell builtin\n";
         continue;
