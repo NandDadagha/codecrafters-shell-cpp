@@ -63,16 +63,33 @@ int main()
       continue;
     }
     // pwd
-    else if(command == "pwd") {
+    else if (command == "pwd")
+    {
       char buffer[1024];
-      if(getcwd(buffer, sizeof(buffer)) != nullptr) {
+      if (getcwd(buffer, sizeof(buffer)) != nullptr)
+      {
         std::cout << buffer << "\n";
       }
       continue;
     }
     // cd
-    else if(command == "cd") {
-      if(chdir(tokens[1].c_str()) != 0) {
+    else if (command == "cd")
+    {
+      // if (tokens.size() < 2)
+      // { // no path given just written cd
+      //   continue;
+      // }
+      if (tokens.size() < 2 || tokens[1] == "~")
+      {
+        const char *homeEnv = getenv("HOME");
+        if (chdir(homeEnv) != 0)
+        {
+          std::cout << "cd: " << tokens[1] << ": No such file or directory\n";
+        }
+        continue;
+      }
+      else if (chdir(tokens[1].c_str()) != 0)
+      {
         std::cout << "cd: " << tokens[1] << ": No such file or directory\n";
       }
       continue;
