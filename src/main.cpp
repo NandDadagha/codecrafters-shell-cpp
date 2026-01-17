@@ -21,15 +21,22 @@ std::vector<std::string> parsing(const std::string &input)
 {
   std::vector<std::string> tokens;
   std::string curr_token = "";
-  bool in_quotes = false;
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
   for(char c : input) {
-    if(c == '\'' && !in_quotes) {
-      in_quotes = true;
+    if(c == '\"' && in_double_quotes) {
+      in_double_quotes = false;
     }
-    else if(c == '\'' && in_quotes) {
-      in_quotes = false;
+    else if(c == '\'' && in_single_quotes) {
+      in_single_quotes = false;
     }
-    else if(std::isspace(c) && !in_quotes) {
+    else if(c == '\'' && !in_double_quotes) {
+      in_single_quotes = true;
+    }
+    else if(c == '\"' && !in_single_quotes) {
+      in_double_quotes = true;
+    }
+    else if(std::isspace(c) && !in_single_quotes && !in_double_quotes) {
       if(!curr_token.empty()) {
         tokens.push_back(curr_token);
         curr_token.clear();
