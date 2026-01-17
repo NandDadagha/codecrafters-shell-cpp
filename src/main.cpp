@@ -24,10 +24,19 @@ std::vector<std::string> parsing(const std::string &input)
   bool in_single_quotes = false;
   bool in_double_quotes = false;
   for(size_t i = 0; i < input.size(); i++) {
-    if(input[i] == '\\' && !in_double_quotes && !in_single_quotes) {
-      if(i + 1 < input.size()) {
+    if(input[i] == '\\' && in_double_quotes) {
+      if(input[i + 1] == '\\' || input[i + 1] == '"') {
         curr_token += input[i + 1];
         i++;
+      }
+      else {
+        curr_token += input[i];
+      }
+    }
+    else if(input[i] == '\\' && !in_double_quotes && !in_single_quotes) {
+      if(i + 1 < input.size()) {
+        curr_token += input[i + 1];
+        i++; 
       }
     }
     else if(input[i] == '\"' && in_double_quotes) {
