@@ -23,27 +23,33 @@ std::vector<std::string> parsing(const std::string &input)
   std::string curr_token = "";
   bool in_single_quotes = false;
   bool in_double_quotes = false;
-  for(char c : input) {
-    if(c == '\"' && in_double_quotes) {
+  for(size_t i = 0; i < input.size(); i++) {
+    if(input[i] == '\\' && !in_double_quotes && !in_single_quotes) {
+      if(i + 1 < input.size()) {
+        curr_token += input[i + 1];
+        i++;
+      }
+    }
+    else if(input[i] == '\"' && in_double_quotes) {
       in_double_quotes = false;
     }
-    else if(c == '\'' && in_single_quotes) {
+    else if(input[i] == '\'' && in_single_quotes) {
       in_single_quotes = false;
     }
-    else if(c == '\'' && !in_double_quotes) {
+    else if(input[i] == '\'' && !in_double_quotes) {
       in_single_quotes = true;
     }
-    else if(c == '\"' && !in_single_quotes) {
+    else if(input[i] == '\"' && !in_single_quotes) {
       in_double_quotes = true;
     }
-    else if(std::isspace(c) && !in_single_quotes && !in_double_quotes) {
+    else if(std::isspace(input[i]) && !in_single_quotes && !in_double_quotes) {
       if(!curr_token.empty()) {
         tokens.push_back(curr_token);
         curr_token.clear();
       }
     }
     else {
-      curr_token += c;
+      curr_token += input[i];
     }
   }
   if(!curr_token.empty()) {
