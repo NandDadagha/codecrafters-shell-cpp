@@ -7,6 +7,7 @@
 #include <sys/stat.h> // stat
 #include <unistd.h>   // fork, execvp
 #include <sys/wait.h> // wait
+#include <cctype>
 
 bool isExecutable(const std::string &path)
 {
@@ -16,14 +17,30 @@ bool isExecutable(const std::string &path)
          access(path.c_str(), X_OK) == 0;
 }
 
-std::vector<std::string> tokenize(const std::string &input)
+std::vector<std::string> parsing(const std::string &input)
 {
   std::vector<std::string> tokens;
-  std::stringstream ss(input);
-  std::string token;
-  while (ss >> token)
-  {
-    tokens.push_back(token);
+  std::string curr_token = "";
+  bool in_quotes = false;
+  for(char c : input) {
+    if(c == '\'' && !in_quotes) {
+      in_quotes = true;
+    }
+    else if(c == '\'' && in_quotes) {
+      in_quotes = false;
+    }
+    else if(std::isspace(c) && !in_quotes) {
+      if(!curr_token.empty()) {
+        tokens.push_back(curr_token);
+        curr_token.clear();
+      }
+    }
+    else {
+      curr_token += c;
+    }
+  }
+  if(!curr_token.empty()) {
+    tokens.push_back(curr_token);
   }
   return tokens;
 }
@@ -45,7 +62,7 @@ int main()
     }
     if (input.empty()) // pressing "enter" wh blank line
       continue;
-    std::vector<std::string> tokens = tokenize(input);
+    std::vector<std::string> tokens = parsing(input);
     std::string command = tokens[0];
 
     // exit
@@ -75,10 +92,6 @@ int main()
     // cd
     else if (command == "cd")
     {
-      // if (tokens.size() < 2)
-      // { // no path given just written cd
-      //   continue;
-      // }
       if (tokens.size() < 2 || tokens[1] == "~")
       {
         const char *homeEnv = getenv("HOME");
