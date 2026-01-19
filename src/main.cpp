@@ -3,9 +3,9 @@
 #include <string>
 #include <cstdlib>    // getenv
 #include <sstream>    // stringstream
-#include <unistd.h>   // access
+#include <unistd.h>   // access, fork, execvp
 #include <sys/stat.h> // stat
-#include <unistd.h>   // fork, execvp
+#include <fcntl.h>    // open
 #include <sys/wait.h> // wait
 #include <cctype>
 
@@ -17,54 +17,69 @@ bool isExecutable(const std::string &path)
          access(path.c_str(), X_OK) == 0;
 }
 
+// PARSING
 std::vector<std::string> parsing(const std::string &input)
 {
-  std::vector<std::string> tokens;
+  std::vector<std::string> filteredToken;
   std::string curr_token = "";
   bool in_single_quotes = false;
   bool in_double_quotes = false;
-  for(size_t i = 0; i < input.size(); i++) {
-    if(input[i] == '\\' && in_double_quotes) {
-      if(input[i + 1] == '\\' || input[i + 1] == '"') {
+  for (size_t i = 0; i < input.size(); i++)
+  {
+    if (input[i] == '\\' && in_double_quotes)
+    {
+      if (input[i + 1] == '\\' || input[i + 1] == '"')
+      {
         curr_token += input[i + 1];
         i++;
       }
-      else {
+      else
+      {
         curr_token += input[i];
       }
     }
-    else if(input[i] == '\\' && !in_double_quotes && !in_single_quotes) {
-      if(i + 1 < input.size()) {
+    else if (input[i] == '\\' && !in_double_quotes && !in_single_quotes)
+    {
+      if (i + 1 < input.size())
+      {
         curr_token += input[i + 1];
-        i++; 
+        i++;
       }
     }
-    else if(input[i] == '\"' && in_double_quotes) {
+    else if (input[i] == '\"' && in_double_quotes)
+    {
       in_double_quotes = false;
     }
-    else if(input[i] == '\'' && in_single_quotes) {
+    else if (input[i] == '\'' && in_single_quotes)
+    {
       in_single_quotes = false;
     }
-    else if(input[i] == '\'' && !in_double_quotes) {
+    else if (input[i] == '\'' && !in_double_quotes)
+    {
       in_single_quotes = true;
     }
-    else if(input[i] == '\"' && !in_single_quotes) {
+    else if (input[i] == '\"' && !in_single_quotes)
+    {
       in_double_quotes = true;
     }
-    else if(std::isspace(input[i]) && !in_single_quotes && !in_double_quotes) {
-      if(!curr_token.empty()) {
-        tokens.push_back(curr_token);
+    else if (std::isspace(input[i]) && !in_single_quotes && !in_double_quotes)
+    {
+      if (!curr_token.empty())
+      {
+        filteredToken.push_back(curr_token);
         curr_token.clear();
       }
     }
-    else {
+    else
+    {
       curr_token += input[i];
     }
   }
-  if(!curr_token.empty()) {
-    tokens.push_back(curr_token);
+  if (!curr_token.empty())
+  {
+    filteredToken.push_back(curr_token);
   }
-  return tokens;
+  return filteredToken;
 }
 
 int main()
@@ -84,9 +99,46 @@ int main()
     }
     if (input.empty()) // pressing "enter" wh blank line
       continue;
-    std::vector<std::string> tokens = parsing(input);
-    std::string command = tokens[0];
 
+    std::vector<std::string> tokens = parsing(input);
+
+    // Redirection
+    std::string redirectFile = "";
+    bool isRedirecting = false;
+    std::vector<std::string> filteredToken;
+    for (size_t i = 0; i < tokens.size(); i++)
+    {
+      if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
+      {
+        isRedirecting = true;
+        redirectFile = tokens[i + 1];
+        i++;
+      }
+      else
+      {
+        filteredToken.push_back(tokens[i]);
+      }
+    }
+    if (filteredToken.empty())
+      continue;
+
+    std::string command = filteredToken[0];
+
+    int original_stdout = -1;
+    if (isRedirecting)
+    {
+      if (command == "echo" || command == "pwd" || command == "type")
+      {
+        original_stdout = dup(STDOUT_FILENO); // backup terminal
+        int fd = open(redirectFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        if (fd != -1)
+        {
+          dup2(fd, STDOUT_FILENO);
+          close(fd);
+        }
+      }
+    }
+    // BUILT-IN
     // exit
     if (command == "exit")
       exit(0);
@@ -94,12 +146,11 @@ int main()
     // echo
     else if (command == "echo")
     {
-      for (size_t i = 1; i < tokens.size(); i++)
+      for (size_t i = 1; i < filteredToken.size(); i++)
       {
-        std::cout << tokens[i] << (i == tokens.size() - 1 ? "" : " ");
+        std::cout << filteredToken[i] << (i == filteredToken.size() - 1 ? "" : " ");
       }
       std::cout << std::endl;
-      continue;
     }
     // pwd
     else if (command == "pwd")
@@ -109,36 +160,32 @@ int main()
       {
         std::cout << buffer << "\n";
       }
-      continue;
     }
     // cd
     else if (command == "cd")
     {
-      if (tokens.size() < 2 || tokens[1] == "~")
+      if (filteredToken.size() < 2 || filteredToken[1] == "~")
       {
         const char *homeEnv = getenv("HOME");
         if (chdir(homeEnv) != 0)
         {
-          std::cout << "cd: " << tokens[1] << ": No such file or directory\n";
+          std::cout << "cd: " << filteredToken[1] << ": No such file or directory\n";
         }
-        continue;
       }
-      else if (chdir(tokens[1].c_str()) != 0)
+      else if (chdir(filteredToken[1].c_str()) != 0)
       {
-        std::cout << "cd: " << tokens[1] << ": No such file or directory\n";
+        std::cout << "cd: " << filteredToken[1] << ": No such file or directory\n";
       }
-      continue;
     }
     // type
     else if (command == "type")
     {
-      if (tokens.size() < 2)
+      if (filteredToken.size() < 2)
         continue; // Handle case where user just types 'type' without argv
-      std::string target = tokens[1];
+      std::string target = filteredToken[1];
       if (target == "echo" || target == "exit" || target == "type" || target == "pwd" || target == "cd")
       {
         std::cout << target << " is a shell builtin\n";
-        continue;
       }
       else
       {
@@ -166,47 +213,63 @@ int main()
         {
           std::cout << target << ": not found\n";
         }
-        continue;
       }
     }
     // execute
-    const char *pathEnv = getenv("PATH");
-    std::stringstream ss(pathEnv ? pathEnv : "");
-    std::string dir;
-    std::string executablePath = "";
-    while (getline(ss, dir, ':'))
+    else
     {
-      std::string fullPath = dir + "/" + command;
-      if (isExecutable(fullPath))
+      const char *pathEnv = getenv("PATH");
+      std::stringstream ss(pathEnv ? pathEnv : "");
+      std::string dir;
+      std::string executablePath = "";
+      while (getline(ss, dir, ':'))
       {
-        executablePath = fullPath;
-        break;
+        std::string fullPath = dir + "/" + command;
+        if (isExecutable(fullPath))
+        {
+          executablePath = fullPath;
+          break;
+        }
+      }
+      if (!executablePath.empty())
+      {
+        std::vector<char *> argv; // char* instead of string because kernal can't understand c++
+        for (auto &s : filteredToken)
+        {
+          argv.push_back(&s[0]);
+        }
+        argv.push_back(nullptr);
+
+        pid_t pid = fork();
+        if (pid == 0) // child process
+        {
+          if (isRedirecting)
+          {
+            int fd = open(redirectFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            if (fd == -1)
+            {
+              exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+          }
+          if (execv(executablePath.c_str(), argv.data()) == -1)
+            exit(1);
+        }
+        else if (pid > 0) // parent process
+        {
+          int status;
+          waitpid(pid, &status, 0);
+        }
+      }
+      else
+      {
+        std::cout << input << ": command not found" << std::endl;
       }
     }
-    if (!executablePath.empty())
-    {
-      std::vector<char *> argv; // char* instead of string because kernal can't understand c++
-      for (auto &s : tokens)
-      {
-
-        argv.push_back(&s[0]);
-      }
-      argv.push_back(nullptr);
-
-      pid_t pid = fork();
-      if (pid == 0)
-      {
-        // child process
-        if (execv(executablePath.c_str(), argv.data()) == -1)
-          exit(1);
-      }
-      else if (pid > 0)
-      { // parent process
-        int status;
-        waitpid(pid, &status, 0);
-      }
-      continue;
+    if(original_stdout != -1) {
+      dup2(original_stdout, STDOUT_FILENO);
+      close(original_stdout);
     }
-    std::cout << input << ": command not found" << std::endl;
   }
 }
