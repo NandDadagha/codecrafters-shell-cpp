@@ -103,15 +103,23 @@ int main()
     std::vector<std::string> tokens = parsing(input);
 
     // Redirection
-    std::string redirectFile = "";
-    bool isRedirecting = false;
+    std::string stdoutFile = "";
+    std::string stderrFile = "";
+    bool redirectStdout = false;
+    bool redirectStderr = false;
     std::vector<std::string> filteredToken;
     for (size_t i = 0; i < tokens.size(); i++)
     {
       if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
       {
-        isRedirecting = true;
-        redirectFile = tokens[i + 1];
+        redirectStdout = true;
+        stdoutFile = tokens[i + 1];
+        i++;
+      }
+      else if (tokens[i] == "2>" && i + 1 < tokens.size())
+      {
+        redirectStderr = true;
+        stderrFile = tokens[i + 1];
         i++;
       }
       else
@@ -124,17 +132,33 @@ int main()
 
     std::string command = filteredToken[0];
 
+    // redirecting stdout
     int original_stdout = -1;
-    if (isRedirecting)
+    if (redirectStdout)
     {
       if (command == "echo" || command == "pwd" || command == "type")
       {
         original_stdout = dup(STDOUT_FILENO); // backup terminal
-        int fd = open(redirectFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        int fd = open(stdoutFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
         if (fd != -1)
         {
           dup2(fd, STDOUT_FILENO);
           close(fd);
+        }
+      }
+    }
+    // redirecting stderr
+    int original_stderr = -1;
+    if (redirectStderr)
+    {
+      if (command == "echo" || command == "pwd" || command == "type")
+      {
+        original_stderr = dup(STDERR_FILENO); // backup
+        int fderr = open(stderrFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        if (fderr != 1)
+        {
+          dup2(fderr, STDERR_FILENO);
+          close(fderr);
         }
       }
     }
@@ -243,15 +267,25 @@ int main()
         pid_t pid = fork();
         if (pid == 0) // child process
         {
-          if (isRedirecting)
+          if (redirectStdout)
           {
-            int fd = open(redirectFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            int fd = open(stdoutFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
             if (fd == -1)
             {
               exit(1);
             }
             dup2(fd, STDOUT_FILENO);
             close(fd);
+          }
+          if (redirectStderr)
+          {
+            int fderr = open(stderrFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            if (fderr == -1)
+            {
+              exit(1);
+            }
+            dup2(fderr, STDERR_FILENO);
+            close(fderr);
           }
           if (execv(executablePath.c_str(), argv.data()) == -1)
             exit(1);
@@ -267,9 +301,15 @@ int main()
         std::cout << input << ": command not found" << std::endl;
       }
     }
-    if(original_stdout != -1) {
+    if (original_stdout != -1)
+    {
       dup2(original_stdout, STDOUT_FILENO);
       close(original_stdout);
+    }
+    if (original_stderr != -1)
+    {
+      dup2(original_stderr, STDERR_FILENO);
+      close(original_stderr);
     }
   }
 }
