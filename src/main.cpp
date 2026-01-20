@@ -108,6 +108,7 @@ int main()
     bool redirectStdout = false;
     bool appendStdout = false;
     bool redirectStderr = false;
+    bool appendStderr = false;
     std::vector<std::string> filteredToken;
     for (size_t i = 0; i < tokens.size(); i++)
     {
@@ -115,6 +116,12 @@ int main()
         redirectStdout = true;
         appendStdout = true;
         stdoutFile = tokens[i + 1];
+        i++;
+      }
+      else if(tokens[i] == "2>>" && i + 1 < tokens.size()) {
+        redirectStderr = true;
+        appendStderr = true;
+        stderrFile = tokens[i + 1];
         i++;
       }
       else if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
@@ -164,7 +171,10 @@ int main()
       if (command == "echo" || command == "pwd" || command == "type")
       {
         original_stderr = dup(STDERR_FILENO); // backup
-        int fderr = open(stderrFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        int flags = O_CREAT | O_WRONLY;
+        if(appendStderr) flags |= O_APPEND;
+        else flags |= O_TRUNC;
+        int fderr = open(stderrFile.c_str(), flags, 0664);
         if (fderr != 1)
         {
           dup2(fderr, STDERR_FILENO);
@@ -292,7 +302,10 @@ int main()
           }
           if (redirectStderr)
           {
-            int fderr = open(stderrFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            int flags = O_CREAT | O_WRONLY;
+            if(!appendStderr) flags |= O_TRUNC;
+            else flags |= O_APPEND;
+            int fderr = open(stderrFile.c_str(), flags, 0664);
             if (fderr == -1)
             {
               exit(1);
