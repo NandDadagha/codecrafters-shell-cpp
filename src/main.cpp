@@ -106,11 +106,18 @@ int main()
     std::string stdoutFile = "";
     std::string stderrFile = "";
     bool redirectStdout = false;
+    bool appendStdout = false;
     bool redirectStderr = false;
     std::vector<std::string> filteredToken;
     for (size_t i = 0; i < tokens.size(); i++)
     {
-      if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
+      if((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
+        redirectStdout = true;
+        appendStdout = true;
+        stdoutFile = tokens[i + 1];
+        i++;
+      }
+      else if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
       {
         redirectStdout = true;
         stdoutFile = tokens[i + 1];
@@ -139,7 +146,10 @@ int main()
       if (command == "echo" || command == "pwd" || command == "type")
       {
         original_stdout = dup(STDOUT_FILENO); // backup terminal
-        int fd = open(stdoutFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        int flags = O_WRONLY | O_CREAT;
+        if(!appendStdout) flags |= O_TRUNC;
+        else flags |= O_APPEND;
+        int fd = open(stdoutFile.c_str(), flags, 0664);
         if (fd != -1)
         {
           dup2(fd, STDOUT_FILENO);
@@ -269,7 +279,10 @@ int main()
         {
           if (redirectStdout)
           {
-            int fd = open(stdoutFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            int flags = O_CREAT | O_WRONLY;
+            if(!appendStdout) flags |= O_TRUNC;
+            else flags |= O_APPEND;
+            int fd = open(stdoutFile.c_str(), flags, 0664);
             if (fd == -1)
             {
               exit(1);
