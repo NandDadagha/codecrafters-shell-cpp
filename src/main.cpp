@@ -8,6 +8,8 @@
 #include <fcntl.h>    // open
 #include <sys/wait.h> // wait
 #include <cctype>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 bool isExecutable(const std::string &path)
 {
@@ -17,6 +19,30 @@ bool isExecutable(const std::string &path)
          access(path.c_str(), X_OK) == 0;
 }
 
+char *command_generator(const char *text, int state) {
+  static int list_index, len;
+  std::vector<std::string> builtIn = {"echo", "exit"};
+  if(state == 0) { // First time
+    list_index = 0;
+    len = strlen(text);
+  }
+  while(list_index < builtIn.size()) {
+    const char* name = builtIn[list_index].c_str();
+    list_index++;
+    if(strncmp(name, text, len) == 0) {
+      return strdup(name);
+    }
+  }
+  return nullptr;
+}
+char **completion_function(const char *text, int start, int end)
+{ 
+  if(start == 0) {
+    return rl_completion_matches(text, command_generator);
+  }
+  rl_attempted_completion_over = 1;
+  return nullptr;
+}
 // PARSING
 std::vector<std::string> parsing(const std::string &input)
 {
@@ -90,12 +116,18 @@ int main()
 
   while (1)
   {
-    std::cout << "$ ";
-    std::string input;
-    if (!getline(std::cin, input)) // ctrl + d to exit shell
+    rl_attempted_completion_function = completion_function;
+    char *line = readline("$ ");
+    if (!line) // EOF (Ctrl + D)
     {
       std::cout << "\n";
       break;
+    }
+    std::string input;
+    if (line)
+    {
+      input = line;
+      free(line);
     }
     if (input.empty()) // pressing "enter" wh blank line
       continue;
@@ -112,13 +144,15 @@ int main()
     std::vector<std::string> filteredToken;
     for (size_t i = 0; i < tokens.size(); i++)
     {
-      if((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
+      if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size())
+      {
         redirectStdout = true;
         appendStdout = true;
         stdoutFile = tokens[i + 1];
         i++;
       }
-      else if(tokens[i] == "2>>" && i + 1 < tokens.size()) {
+      else if (tokens[i] == "2>>" && i + 1 < tokens.size())
+      {
         redirectStderr = true;
         appendStderr = true;
         stderrFile = tokens[i + 1];
@@ -154,8 +188,10 @@ int main()
       {
         original_stdout = dup(STDOUT_FILENO); // backup terminal
         int flags = O_WRONLY | O_CREAT;
-        if(!appendStdout) flags |= O_TRUNC;
-        else flags |= O_APPEND;
+        if (!appendStdout)
+          flags |= O_TRUNC;
+        else
+          flags |= O_APPEND;
         int fd = open(stdoutFile.c_str(), flags, 0664);
         if (fd != -1)
         {
@@ -172,8 +208,10 @@ int main()
       {
         original_stderr = dup(STDERR_FILENO); // backup
         int flags = O_CREAT | O_WRONLY;
-        if(appendStderr) flags |= O_APPEND;
-        else flags |= O_TRUNC;
+        if (appendStderr)
+          flags |= O_APPEND;
+        else
+          flags |= O_TRUNC;
         int fderr = open(stderrFile.c_str(), flags, 0664);
         if (fderr != 1)
         {
@@ -290,8 +328,10 @@ int main()
           if (redirectStdout)
           {
             int flags = O_CREAT | O_WRONLY;
-            if(!appendStdout) flags |= O_TRUNC;
-            else flags |= O_APPEND;
+            if (!appendStdout)
+              flags |= O_TRUNC;
+            else
+              flags |= O_APPEND;
             int fd = open(stdoutFile.c_str(), flags, 0664);
             if (fd == -1)
             {
@@ -303,8 +343,10 @@ int main()
           if (redirectStderr)
           {
             int flags = O_CREAT | O_WRONLY;
-            if(!appendStderr) flags |= O_TRUNC;
-            else flags |= O_APPEND;
+            if (!appendStderr)
+              flags |= O_TRUNC;
+            else
+              flags |= O_APPEND;
             int fderr = open(stderrFile.c_str(), flags, 0664);
             if (fderr == -1)
             {
