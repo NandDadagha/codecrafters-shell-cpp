@@ -23,7 +23,7 @@ bool isExecutable(const std::string &path)
 char *command_generator(const char *text, int state)
 {
   static int index, len;
-  std::vector<std::string> builtIn = {"echo", "exit"};
+  std::vector<std::string> builtIn = {"echo", "exit", "history"};
   static std::vector<std::string> matches;
   if (state == 0)
   { // First time
@@ -217,7 +217,7 @@ int main()
     int original_stdout = -1;
     if (redirectStdout)
     {
-      if (command == "echo" || command == "pwd" || command == "type")
+      if (command == "echo" || command == "pwd" || command == "type" || command == "history")
       {
         original_stdout = dup(STDOUT_FILENO); // backup terminal
         int flags = O_WRONLY | O_CREAT;
@@ -237,7 +237,7 @@ int main()
     int original_stderr = -1;
     if (redirectStderr)
     {
-      if (command == "echo" || command == "pwd" || command == "type")
+      if (command == "echo" || command == "pwd" || command == "type" || command == "history")
       {
         original_stderr = dup(STDERR_FILENO); // backup
         int flags = O_CREAT | O_WRONLY;
@@ -298,7 +298,7 @@ int main()
       if (filteredToken.size() < 2)
         continue; // Handle case where user just types 'type' without argv
       std::string target = filteredToken[1];
-      if (target == "echo" || target == "exit" || target == "type" || target == "pwd" || target == "cd")
+      if (target == "echo" || target == "exit" || target == "type" || target == "pwd" || target == "cd" || target == "history")
       {
         std::cout << target << " is a shell builtin\n";
       }
@@ -329,6 +329,9 @@ int main()
           std::cout << target << ": not found\n";
         }
       }
+    }
+    else if(command == "history") {
+      
     }
     // execute
     else
