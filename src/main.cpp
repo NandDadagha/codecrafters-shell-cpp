@@ -164,6 +164,8 @@ int main()
     }
     if (input.empty()) // pressing "enter" wh blank line
       continue;
+    
+    add_history(input.c_str());
 
     std::vector<std::string> tokens = parsing(input);
 
@@ -331,7 +333,12 @@ int main()
       }
     }
     else if(command == "history") {
-      
+      HIST_ENTRY **list = history_list();
+      if(list) {
+        for(int i = 0; list[i] != nullptr; i++) {
+          std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
+        }
+      } 
     }
     // execute
     else
