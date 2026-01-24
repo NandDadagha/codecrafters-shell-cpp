@@ -10,7 +10,7 @@
 #include <cctype>
 #include <readline/readline.h> // readline()bra
 #include <readline/history.h>
-#include <dirent.h>   // readdir, opendir, DIR*
+#include <dirent.h> // readdir, opendir, DIR*
 
 bool isExecutable(const std::string &path)
 {
@@ -164,7 +164,7 @@ int main()
     }
     if (input.empty()) // pressing "enter" wh blank line
       continue;
-    
+
     add_history(input.c_str());
 
     std::vector<std::string> tokens = parsing(input);
@@ -332,13 +332,29 @@ int main()
         }
       }
     }
-    else if(command == "history") {
+    else if (command == "history")
+    {
       HIST_ENTRY **list = history_list();
-      if(list) {
-        for(int i = 0; list[i] != nullptr; i++) {
+      if (!list)
+        continue;
+
+      int total = history_length;
+      if (filteredToken.size() == 1)
+      {
+        for (int i = 0; list[i] != nullptr; i++)
+        {
           std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
         }
-      } 
+      }
+      else
+      {
+        int n = std::stoi(filteredToken[1]);
+        int start = std::max(0, total - n);
+        for (int i = start; list[i] != nullptr; i++)
+        {
+          std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
+        }
+      }
     }
     // execute
     else
