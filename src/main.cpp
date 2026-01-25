@@ -350,6 +350,9 @@ int main()
       {
         read_history(filteredToken[2].c_str());
       }
+      else if(filteredToken[1] == "-w" && filteredToken.size() > 2) {
+        write_history(filteredToken[2].c_str());
+      }
       else
       {
         int n = std::stoi(filteredToken[1]);
