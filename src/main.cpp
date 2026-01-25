@@ -148,6 +148,10 @@ int main()
   std::cerr << std::unitbuf;
 
   int session_start_index = history_length;
+  const char *hist_path = getenv("HISTFILE");
+  if (hist_path == nullptr)
+    hist_path = ".my_shell_history";
+  read_history(hist_path);
   while (1)
   {
     rl_attempted_completion_function = completion_function;
@@ -347,17 +351,20 @@ int main()
           std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
         }
       }
-      else if(filteredToken[1] == "-r" && filteredToken.size() > 2) 
+      else if (filteredToken[1] == "-r" && filteredToken.size() > 2)
       {
         read_history(filteredToken[2].c_str());
       }
-      else if(filteredToken[1] == "-w" && filteredToken.size() > 2) {
+      else if (filteredToken[1] == "-w" && filteredToken.size() > 2)
+      {
         write_history(filteredToken[2].c_str());
         session_start_index = history_length;
       }
-      else if(filteredToken[1] == "-a" && filteredToken.size() > 2) {
+      else if (filteredToken[1] == "-a" && filteredToken.size() > 2)
+      {
         int new_commands = history_length - session_start_index;
-        if(new_commands > 0) {
+        if (new_commands > 0)
+        {
           append_history(new_commands, filteredToken[2].c_str());
           session_start_index = history_length;
         }
