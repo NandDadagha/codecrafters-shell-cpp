@@ -167,7 +167,7 @@ int main()
       input = line;
       free(line);
     }
-    if (input.empty()) // pressing "enter" wh blank line
+    if (input.empty()) // pressing "enter" blank line
       continue;
 
     add_history(input.c_str());
@@ -263,8 +263,10 @@ int main()
     // BUILT-IN
     // exit
     if (command == "exit")
+    {
+      write_history(hist_path);
       exit(0);
-
+    }
     // echo
     else if (command == "echo")
     {
@@ -462,4 +464,5 @@ int main()
       close(original_stderr);
     }
   }
+  write_history(hist_path);
 }
