@@ -346,6 +346,10 @@ int main()
           std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
         }
       }
+      else if(filteredToken[1] == "-r" && filteredToken.size() > 2) 
+      {
+        read_history(filteredToken[2].c_str());
+      }
       else
       {
         int n = std::stoi(filteredToken[1]);
