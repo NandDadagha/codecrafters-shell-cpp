@@ -147,6 +147,7 @@ int main()
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  int session_start_index = history_length;
   while (1)
   {
     rl_attempted_completion_function = completion_function;
@@ -352,6 +353,14 @@ int main()
       }
       else if(filteredToken[1] == "-w" && filteredToken.size() > 2) {
         write_history(filteredToken[2].c_str());
+        session_start_index = history_length;
+      }
+      else if(filteredToken[1] == "-a" && filteredToken.size() > 2) {
+        int new_commands = history_length - session_start_index;
+        if(new_commands > 0) {
+          append_history(new_commands, filteredToken[2].c_str());
+          session_start_index = history_length;
+        }
       }
       else
       {
