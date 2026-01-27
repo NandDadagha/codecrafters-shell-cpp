@@ -260,6 +260,59 @@ int main()
         }
       }
     }
+    // Piping
+    bool hasPipe = false;
+    size_t pipeIndex = 0;
+    for (size_t i = 0; i < filteredToken.size(); i++)
+    {
+      if (filteredToken[i] == "|")
+      {
+        hasPipe = true;
+        pipeIndex = i;
+        break;
+      }
+    }
+    if (hasPipe)
+    {
+      std::vector<std::string> leftTokens(filteredToken.begin(), filteredToken.begin() + pipeIndex);
+      std::vector<std::string> rightTokens(filteredToken.begin() + pipeIndex + 1, filteredToken.end());
+      int pipefds[2];
+      pipe(pipefds);
+      // fork for left command
+      pid_t pid1 = fork();
+      if (pid1 == 0)
+      {
+        dup2(pipefds[1], STDOUT_FILENO);
+        close(pipefds[0]);
+        close(pipefds[1]);
+        std::vector<char *> argv1;
+        for (auto &s : leftTokens)
+          argv1.push_back(&s[0]);
+        argv1.push_back(nullptr);
+
+        execvp(argv1[0], argv1.data());
+        exit(1);
+      }
+      pid_t pid2 = fork();
+      if (pid2 == 0)
+      {
+        dup2(pipefds[0], STDIN_FILENO);
+        close(pipefds[1]);
+        close(pipefds[0]);
+        std::vector<char*> argv2;
+        for(auto &s : rightTokens) 
+          argv2.push_back(&s[0]);
+        argv2.push_back(nullptr);
+
+        execvp(argv2[0], argv2.data());
+        exit(1);
+      }
+      close(pipefds[0]);
+      close(pipefds[1]);
+      waitpid(pid1, nullptr, 0);
+      waitpid(pid2, nullptr, 0);
+      continue;
+    }
     // BUILT-IN
     // exit
     if (command == "exit")
