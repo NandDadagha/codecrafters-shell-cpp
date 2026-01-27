@@ -390,134 +390,173 @@ int main()
       }
     }
     // Piping
+    std::vector<std::vector<std::string>> commands;
+    std::vector<std::string> current_cmd;
     bool hasPipe = false;
-    size_t pipeIndex = 0;
-    for (size_t i = 0; i < filteredToken.size(); i++)
+
+    for (const auto &token : filteredToken)
     {
-      if (filteredToken[i] == "|")
+      if (token == "|")
       {
         hasPipe = true;
-        pipeIndex = i;
-        break;
-      }
-    }
-    if (hasPipe)
-    {
-      std::vector<std::string> leftTokens(filteredToken.begin(), filteredToken.begin() + pipeIndex);
-      std::vector<std::string> rightTokens(filteredToken.begin() + pipeIndex + 1, filteredToken.end());
-      int pipefds[2];
-      pipe(pipefds);
-      // fork for left command
-      pid_t pid1 = fork();
-      if (pid1 == 0)
-      {
-        dup2(pipefds[1], STDOUT_FILENO);
-        close(pipefds[0]);
-        close(pipefds[1]);
-        if (handle_builtin(leftTokens, hist_path, session_start_index))
-          exit(0);
-        std::vector<char *> argv1;
-        for (auto &s : leftTokens)
-          argv1.push_back(&s[0]);
-        argv1.push_back(nullptr);
-
-        execvp(argv1[0], argv1.data());
-        exit(1);
-      }
-      pid_t pid2 = fork();
-      if (pid2 == 0)
-      {
-        dup2(pipefds[0], STDIN_FILENO);
-        close(pipefds[1]);
-        close(pipefds[0]);
-        if (handle_builtin(rightTokens, hist_path, session_start_index))
-          exit(0);
-        std::vector<char *> argv2;
-        for (auto &s : rightTokens)
-          argv2.push_back(&s[0]);
-        argv2.push_back(nullptr);
-
-        execvp(argv2[0], argv2.data());
-        exit(1);
-      }
-      close(pipefds[0]);
-      close(pipefds[1]);
-      waitpid(pid1, nullptr, 0);
-      waitpid(pid2, nullptr, 0);
-      continue;
-    }
-    // execute
-    if(!handle_builtin(filteredToken, hist_path, session_start_index)) {
-    {
-      const char *pathEnv = getenv("PATH");
-      std::stringstream ss(pathEnv ? pathEnv : "");
-      std::string dir;
-      std::string executablePath = "";
-      while (getline(ss, dir, ':'))
-      {
-        std::string fullPath = dir + "/" + command;
-        if (isExecutable(fullPath))
+        if (!current_cmd.empty())
         {
-          executablePath = fullPath;
-          break;
-        }
-      }
-      if (!executablePath.empty())
-      {
-        std::vector<char *> argv; // char* instead of string because kernal can't understand c++
-        for (auto &s : filteredToken)
-        {
-          argv.push_back(&s[0]);
-        }
-        argv.push_back(nullptr);
-
-        pid_t pid = fork();
-        if (pid == 0) // child process
-        {
-          if (redirectStdout)
-          {
-            int flags = O_CREAT | O_WRONLY;
-            if (!appendStdout)
-              flags |= O_TRUNC;
-            else
-              flags |= O_APPEND;
-            int fd = open(stdoutFile.c_str(), flags, 0664);
-            if (fd == -1)
-            {
-              exit(1);
-            }
-            dup2(fd, STDOUT_FILENO);
-            close(fd);
-          }
-          if (redirectStderr)
-          {
-            int flags = O_CREAT | O_WRONLY;
-            if (!appendStderr)
-              flags |= O_TRUNC;
-            else
-              flags |= O_APPEND;
-            int fderr = open(stderrFile.c_str(), flags, 0664);
-            if (fderr == -1)
-            {
-              exit(1);
-            }
-            dup2(fderr, STDERR_FILENO);
-            close(fderr);
-          }
-          if (execv(executablePath.c_str(), argv.data()) == -1)
-            exit(1);
-        }
-        else if (pid > 0) // parent process
-        {
-          int status;
-          waitpid(pid, &status, 0);
+          commands.push_back(current_cmd);
+          current_cmd.clear();
         }
       }
       else
       {
-        std::cout << input << ": command not found" << std::endl;
+        current_cmd.push_back(token);
       }
     }
+    if (!current_cmd.empty())
+      commands.push_back(current_cmd);
+
+    // 2. Execution Loop
+    if (hasPipe && commands.size() > 1)
+    {
+      std::vector<pid_t> pids;
+      int prev_read = -1;
+      int pidfds[2];
+
+      for (size_t i = 0; i < commands.size(); i++)
+      {
+        // Only create a pipe if we are NOT the last command
+        if (i < commands.size() - 1)
+        {
+          if (pipe(pidfds) == -1) {
+            perror("pipe");
+            break;
+          }
+        }
+
+        pid_t pid = fork();
+        if (pid == 0) // CHILD
+        {
+          // A. Input Wiring (Read from left)
+          if (prev_read != -1)
+          {
+            dup2(prev_read, STDIN_FILENO);
+            close(prev_read);
+          }
+
+          // B. Output Wiring (Write to right)
+          if (i < commands.size() - 1)
+          {
+            dup2(pidfds[1], STDOUT_FILENO);
+            close(pidfds[1]); 
+            close(pidfds[0]); // Child doesn't need the read end of its own output pipe
+          }
+
+          // C. Execute
+          if (handle_builtin(commands[i], hist_path, session_start_index))
+            exit(0);
+
+          std::vector<char *> argv;
+          for (auto &s : commands[i])
+            argv.push_back(&s[0]);
+          argv.push_back(nullptr);
+
+          execvp(argv[0], argv.data());
+          perror("execvp"); // Good for debugging
+          exit(1);
+        }
+        else if (pid > 0) // PARENT
+        {
+          pids.push_back(pid);
+          
+          // Close the read-end we just handed off to the child
+          if (prev_read != -1)
+            close(prev_read);
+
+          // Setup for next iteration
+          if (i < commands.size() - 1)
+          {
+            close(pidfds[1]);      // Parent MUST close write end
+            prev_read = pidfds[0]; // Save read end for the next child
+          }
+        }
+      }
+      for (pid_t p : pids)
+      {
+        waitpid(p, nullptr, 0);
+      }
+      continue;
+    }
+    // execute
+    if (!handle_builtin(filteredToken, hist_path, session_start_index))
+    {
+      {
+        const char *pathEnv = getenv("PATH");
+        std::stringstream ss(pathEnv ? pathEnv : "");
+        std::string dir;
+        std::string executablePath = "";
+        while (getline(ss, dir, ':'))
+        {
+          std::string fullPath = dir + "/" + command;
+          if (isExecutable(fullPath))
+          {
+            executablePath = fullPath;
+            break;
+          }
+        }
+        if (!executablePath.empty())
+        {
+          std::vector<char *> argv; // char* instead of string because kernal can't understand c++
+          for (auto &s : filteredToken)
+          {
+            argv.push_back(&s[0]);
+          }
+          argv.push_back(nullptr);
+
+          pid_t pid = fork();
+          if (pid == 0) // child process
+          {
+            if (redirectStdout)
+            {
+              int flags = O_CREAT | O_WRONLY;
+              if (!appendStdout)
+                flags |= O_TRUNC;
+              else
+                flags |= O_APPEND;
+              int fd = open(stdoutFile.c_str(), flags, 0664);
+              if (fd == -1)
+              {
+                exit(1);
+              }
+              dup2(fd, STDOUT_FILENO);
+              close(fd);
+            }
+            if (redirectStderr)
+            {
+              int flags = O_CREAT | O_WRONLY;
+              if (!appendStderr)
+                flags |= O_TRUNC;
+              else
+                flags |= O_APPEND;
+              int fderr = open(stderrFile.c_str(), flags, 0664);
+              if (fderr == -1)
+              {
+                exit(1);
+              }
+              dup2(fderr, STDERR_FILENO);
+              close(fderr);
+            }
+            if (execv(executablePath.c_str(), argv.data()) == -1)
+              exit(1);
+          }
+          else if (pid > 0) // parent process
+          {
+            int status;
+            waitpid(pid, &status, 0);
+          }
+        }
+        else
+        {
+          std::cout << input << ": command not found" << std::endl;
+        }
+      }
     }
     if (original_stdout != -1)
     {
