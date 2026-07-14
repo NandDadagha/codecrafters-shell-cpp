@@ -8,267 +8,15 @@
 #include <fcntl.h>    // open
 #include <sys/wait.h> // wait
 #include <cctype>
-#include <readline/readline.h> // readline()bra
+#include <readline/readline.h> // readline()
 #include <readline/history.h>
 #include <dirent.h> // readdir, opendir, DIR*
-
-bool isExecutable(const std::string &path)
-{
-  struct stat sb;
-  return stat(path.c_str(), &sb) == 0 &&
-         S_ISREG(sb.st_mode) &&
-         access(path.c_str(), X_OK) == 0;
-}
-bool handle_builtin(const std::vector<std::string> &filteredToken, const char *hist_path, int &session_start_index)
-{
-  // BUILT-IN
-  // exit
-  std::string command = filteredToken[0];
-  if (command == "exit")
-  {
-    write_history(hist_path);
-    exit(0);
-  }
-  // echo
-  else if (command == "echo")
-  {
-    for (size_t i = 1; i < filteredToken.size(); i++)
-    {
-      std::cout << filteredToken[i] << (i == filteredToken.size() - 1 ? "" : " ");
-    }
-    std::cout << std::endl;
-    return true;
-  }
-  // pwd
-  else if (command == "pwd")
-  {
-    char buffer[1024];
-    if (getcwd(buffer, sizeof(buffer)) != nullptr)
-    {
-      std::cout << buffer << "\n";
-    }
-    return true;
-  }
-  // cd
-  else if (command == "cd")
-  {
-    if (filteredToken.size() < 2 || filteredToken[1] == "~")
-    {
-      const char *homeEnv = getenv("HOME");
-      if (chdir(homeEnv) != 0)
-      {
-        std::cout << "cd: " << filteredToken[1] << ": No such file or directory\n";
-      }
-    }
-    else if (chdir(filteredToken[1].c_str()) != 0)
-    {
-      std::cout << "cd: " << filteredToken[1] << ": No such file or directory\n";
-    }
-    return true;
-  }
-  // type
-  else if (command == "type")
-  {
-    if (filteredToken.size() < 2)
-      return true;
-    std::string target = filteredToken[1];
-    if (target == "echo" || target == "exit" || target == "type" || target == "pwd" || target == "cd" || target == "history")
-    {
-      std::cout << target << " is a shell builtin\n";
-    }
-    else
-    {
-      const char *pathEnv = getenv("PATH");
-      if (!pathEnv)
-      {
-        std::cout << target << ": not found\n";
-        return true;
-      }
-      std::stringstream ss(pathEnv);
-      std::string dir;
-      bool flag = false;
-      while (getline(ss, dir, ':'))
-      {
-        std::string fullPath = dir + "/" + target;
-        // is it executable?
-        if (isExecutable(fullPath))
-        {
-          std::cout << target << " is " << fullPath << "\n";
-          flag = true;
-          break;
-        }
-      }
-      if (!flag)
-      {
-        std::cout << target << ": not found\n";
-      }
-    }
-    return true;
-  }
-  else if (command == "history")
-  {
-    HIST_ENTRY **list = history_list();
-    if (!list)
-      return true;
-    int total = history_length;
-    if (filteredToken.size() == 1)
-    {
-      for (int i = 0; list[i] != nullptr; i++)
-      {
-        std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
-      }
-    }
-    else if (filteredToken[1] == "-r" && filteredToken.size() > 2)
-    {
-      read_history(filteredToken[2].c_str());
-    }
-    else if (filteredToken[1] == "-w" && filteredToken.size() > 2)
-    {
-      write_history(filteredToken[2].c_str());
-      session_start_index = history_length;
-    }
-    else if (filteredToken[1] == "-a" && filteredToken.size() > 2)
-    {
-      int new_commands = history_length - session_start_index;
-      if (new_commands > 0)
-      {
-        append_history(new_commands, filteredToken[2].c_str());
-        session_start_index = history_length;
-      }
-    }
-    else
-    {
-      int n = std::stoi(filteredToken[1]);
-      int start = std::max(0, total - n);
-      for (int i = start; list[i] != nullptr; i++)
-      {
-        std::cout << "   " << i + 1 << " " << list[i]->line << "\n";
-      }
-    }
-    return true;
-  }
-  return false;
-}
-char *command_generator(const char *text, int state)
-{
-  static int index, len;
-  std::vector<std::string> builtIn = {"echo", "exit", "history"};
-  static std::vector<std::string> matches;
-  if (state == 0)
-  { // First time
-    index = 0;
-    len = strlen(text);
-    matches.clear();
-
-    for (int list_index = 0; list_index < builtIn.size(); list_index++)
-    {
-      const char *name = builtIn[list_index].c_str();
-      if (strncmp(name, text, len) == 0)
-      {
-        matches.push_back(name);
-      }
-    }
-    const char *pathEnv = getenv("PATH");
-    std::stringstream ss(pathEnv);
-    std::string dir;
-    while (getline(ss, dir, ':'))
-    {
-      DIR *d = opendir(dir.c_str());
-      if (!d)
-        continue;
-
-      struct dirent *entry;
-      while (entry = readdir(d))
-      {
-        std::string name = entry->d_name;
-        std::string full = dir + "/" + name;
-        if (name.find(text) == 0 && isExecutable(full))
-          matches.push_back(name);
-      }
-      closedir(d);
-    }
-  }
-  if (index < matches.size())
-  {
-    std::string result = matches[index];
-    index++;
-    return strdup(result.c_str());
-  }
-  return nullptr;
-}
-char **completion_function(const char *text, int start, int end)
-{
-  if (start == 0)
-  {
-    return rl_completion_matches(text, command_generator);
-  }
-  // rl_attempted_completion_over = 1; This stops autocompletion done by readline()
-  return nullptr;
-}
-// PARSING
-std::vector<std::string> parsing(const std::string &input)
-{
-  std::vector<std::string> filteredToken;
-  std::string curr_token = "";
-  bool in_single_quotes = false;
-  bool in_double_quotes = false;
-  for (size_t i = 0; i < input.size(); i++)
-  {
-    if (input[i] == '\\' && in_double_quotes)
-    {
-      if (input[i + 1] == '\\' || input[i + 1] == '"')
-      {
-        curr_token += input[i + 1];
-        i++;
-      }
-      else
-      {
-        curr_token += input[i];
-      }
-    }
-    else if (input[i] == '\\' && !in_double_quotes && !in_single_quotes)
-    {
-      if (i + 1 < input.size())
-      {
-        curr_token += input[i + 1];
-        i++;
-      }
-    }
-    else if (input[i] == '\"' && in_double_quotes)
-    {
-      in_double_quotes = false;
-    }
-    else if (input[i] == '\'' && in_single_quotes)
-    {
-      in_single_quotes = false;
-    }
-    else if (input[i] == '\'' && !in_double_quotes)
-    {
-      in_single_quotes = true;
-    }
-    else if (input[i] == '\"' && !in_single_quotes)
-    {
-      in_double_quotes = true;
-    }
-    else if (std::isspace(input[i]) && !in_single_quotes && !in_double_quotes)
-    {
-      if (!curr_token.empty())
-      {
-        filteredToken.push_back(curr_token);
-        curr_token.clear();
-      }
-    }
-    else
-    {
-      curr_token += input[i];
-    }
-  }
-  if (!curr_token.empty())
-  {
-    filteredToken.push_back(curr_token);
-  }
-  return filteredToken;
-}
+#include "parser.h"
+#include "utils.h"
+#include "builtins.h"
+#include "completion.h"
+#include "command.h"
+#include "redirection.h"
 
 int main()
 {
@@ -301,67 +49,32 @@ int main()
 
     add_history(input.c_str());
 
-    std::vector<std::string> tokens = parsing(input);
+    std::vector<std::string> tokens = parse(input);
 
     // Redirection
-    std::string stdoutFile = "";
-    std::string stderrFile = "";
-    bool redirectStdout = false;
-    bool appendStdout = false;
-    bool redirectStderr = false;
-    bool appendStderr = false;
-    std::vector<std::string> filteredToken;
-    for (size_t i = 0; i < tokens.size(); i++)
-    {
-      if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size())
-      {
-        redirectStdout = true;
-        appendStdout = true;
-        stdoutFile = tokens[i + 1];
-        i++;
-      }
-      else if (tokens[i] == "2>>" && i + 1 < tokens.size())
-      {
-        redirectStderr = true;
-        appendStderr = true;
-        stderrFile = tokens[i + 1];
-        i++;
-      }
-      else if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size())
-      {
-        redirectStdout = true;
-        stdoutFile = tokens[i + 1];
-        i++;
-      }
-      else if (tokens[i] == "2>" && i + 1 < tokens.size())
-      {
-        redirectStderr = true;
-        stderrFile = tokens[i + 1];
-        i++;
-      }
-      else
-      {
-        filteredToken.push_back(tokens[i]);
-      }
-    }
-    if (filteredToken.empty())
+    Command commandData;
+    commandData.args = tokens;
+
+    parseRedirection(commandData);
+
+    if (commandData.args.empty())
       continue;
 
-    std::string command = filteredToken[0];
+    std::string command = commandData.args[0];
 
     // redirecting stdout
     int original_stdout = -1;
-    if (redirectStdout)
+    if (commandData.redirectStdout)
     {
       if (command == "echo" || command == "pwd" || command == "type" || command == "history")
       {
         original_stdout = dup(STDOUT_FILENO); // backup terminal
         int flags = O_WRONLY | O_CREAT;
-        if (!appendStdout)
+        if (!commandData.redirectStdout)
           flags |= O_TRUNC;
         else
           flags |= O_APPEND;
-        int fd = open(stdoutFile.c_str(), flags, 0664);
+        int fd = open(commandData.stdoutFile.c_str(), flags, 0664);
         if (fd != -1)
         {
           dup2(fd, STDOUT_FILENO);
@@ -371,17 +84,17 @@ int main()
     }
     // redirecting stderr
     int original_stderr = -1;
-    if (redirectStderr)
+    if (commandData.redirectStderr)
     {
       if (command == "echo" || command == "pwd" || command == "type" || command == "history")
       {
         original_stderr = dup(STDERR_FILENO); // backup
         int flags = O_CREAT | O_WRONLY;
-        if (appendStderr)
+        if (commandData.appendStderr)
           flags |= O_APPEND;
         else
           flags |= O_TRUNC;
-        int fderr = open(stderrFile.c_str(), flags, 0664);
+        int fderr = open(commandData.stderrFile.c_str(), flags, 0664);
         if (fderr != 1)
         {
           dup2(fderr, STDERR_FILENO);
@@ -394,7 +107,7 @@ int main()
     std::vector<std::string> current_cmd;
     bool hasPipe = false;
 
-    for (const auto &token : filteredToken)
+    for (const auto &token : commandData.args)
     {
       if (token == "|")
       {
@@ -485,7 +198,7 @@ int main()
       continue;
     }
     // execute
-    if (!handle_builtin(filteredToken, hist_path, session_start_index))
+    if (!handle_builtin(commandData.args, hist_path, session_start_index))
     {
       {
         const char *pathEnv = getenv("PATH");
@@ -504,7 +217,7 @@ int main()
         if (!executablePath.empty())
         {
           std::vector<char *> argv; // char* instead of string because kernal can't understand c++
-          for (auto &s : filteredToken)
+          for (auto &s : commandData.args)
           {
             argv.push_back(&s[0]);
           }
@@ -513,14 +226,14 @@ int main()
           pid_t pid = fork();
           if (pid == 0) // child process
           {
-            if (redirectStdout)
+            if (commandData.redirectStdout)
             {
               int flags = O_CREAT | O_WRONLY;
-              if (!appendStdout)
+              if (!commandData.appendStdout)
                 flags |= O_TRUNC;
               else
                 flags |= O_APPEND;
-              int fd = open(stdoutFile.c_str(), flags, 0664);
+              int fd = open(commandData.stdoutFile.c_str(), flags, 0664);
               if (fd == -1)
               {
                 exit(1);
@@ -528,14 +241,14 @@ int main()
               dup2(fd, STDOUT_FILENO);
               close(fd);
             }
-            if (redirectStderr)
+            if (commandData.redirectStderr)
             {
               int flags = O_CREAT | O_WRONLY;
-              if (!appendStderr)
+              if (!commandData.appendStderr)
                 flags |= O_TRUNC;
               else
                 flags |= O_APPEND;
-              int fderr = open(stderrFile.c_str(), flags, 0664);
+              int fderr = open(commandData.stderrFile.c_str(), flags, 0664);
               if (fderr == -1)
               {
                 exit(1);
